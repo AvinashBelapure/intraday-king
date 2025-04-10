@@ -5,6 +5,7 @@ import datetime
 import pytz
 from threading import Thread
 import time
+import numpy as np
 
 # App setup
 st.set_page_config(
@@ -15,10 +16,10 @@ st.set_page_config(
 
 # Market hours
 IST = pytz.timezone('Asia/Kolkata')
-MARKET_OPEN = datetime.time(9, 15)  # 9:15 AM IST
-MARKET_CLOSE = datetime.time(15, 30)  # 3:30 PM IST
+MARKET_OPEN = datetime.time(9, 15)
+MARKET_CLOSE = datetime.time(15, 30)
 
-# Sample stocks (customize these)
+# Sample stocks
 STOCKS = {
     'RELIANCE.NS': 'Reliance Industries',
     'TCS.NS': 'Tata Consultancy Services',
@@ -26,23 +27,28 @@ STOCKS = {
 }
 
 def get_signal(data):
-    """Improved signal generation logic"""
+    """Completely fixed signal generation"""
     if len(data) < 2:
         return "NO DATA"
     
-    current_close = data['Close'].iloc[-1]
-    prev_close = data['Close'].iloc[-2]
-    change_pct = ((current_close - prev_close) / prev_close) * 100
-    
-    # Simple signal logic (customize this)
-    if change_pct > 0.5:
-        return "BUY"
-    elif change_pct < -0.5:
-        return "SELL"
-    return "HOLD"
+    try:
+        # Explicitly convert to float to avoid pandas comparison issues
+        current_close = float(data['Close'].iloc[-1])
+        prev_close = float(data['Close'].iloc[-2])
+        change_pct = ((current_close - prev_close) / prev_close) * 100
+        
+        # Safe numerical comparison
+        if change_pct > 0.5:
+            return "BUY"
+        elif change_pct < -0.5:
+            return "SELL"
+        return "HOLD"
+    except Exception as e:
+        st.error(f"Signal error: {str(e)}")
+        return "ERROR"
 
 def fetch_stock_data(symbol):
-    """Safe data fetching with error handling"""
+    """Robust data fetching"""
     try:
         data = yf.download(
             symbol,
@@ -50,42 +56,46 @@ def fetch_stock_data(symbol):
             interval="5m",
             progress=False
         )
-        if not data.empty:
-            return data
+        return data[~data.index.duplicated()]  # Remove duplicate timestamps
     except Exception as e:
-        st.error(f"Error fetching {symbol}: {str(e)}")
-    return pd.DataFrame()
+        st.error(f"Failed to fetch {symbol}: {str(e)}")
+        return pd.DataFrame()
 
 def get_signals():
-    """Get signals for all stocks"""
+    """Error-proof signal generation"""
     signals = []
     for symbol, name in STOCKS.items():
         data = fetch_stock_data(symbol)
-        if not data.empty:
+        if len(data) >= 2:  # Need at least 2 data points
             signal = get_signal(data)
-            signals.append({
-                "Stock": name,
-                "Symbol": symbol,
-                "Price": data['Close'].iloc[-1],
-                "Change (%)": ((data['Close'].iloc[-1] - data['Close'].iloc[-2]) / data['Close'].iloc[-2]) * 100,
-                "Signal": signal,
-                "Last Updated": datetime.datetime.now(IST).strftime("%H:%M:%S")
-            })
+            try:
+                signals.append({
+                    "Stock": name,
+                    "Symbol": symbol,
+                    "Price": float(data['Close'].iloc[-1]),
+                    "Change (%)": float((data['Close'].iloc[-1] - data['Close'].iloc[-2]) / data['Close'].iloc[-2] * 100),
+                    "Signal": signal,
+                    "Last Updated": datetime.datetime.now(IST).strftime("%H:%M:%S")
+                })
+            except Exception as e:
+                st.error(f"Processing error for {symbol}: {str(e)}")
     return pd.DataFrame(signals)
 
-# Auto-refresh logic
+# Session state management
+if "signals" not in st.session_state:
+    st.session_state.signals = get_signals()
+
+# Auto-refresh system
 def auto_refresh():
     while True:
         now = datetime.datetime.now(IST).time()
         if MARKET_OPEN <= now <= MARKET_CLOSE:
-            st.session_state.signals = get_signals()
+            try:
+                st.session_state.signals = get_signals()
+            except Exception as e:
+                st.error(f"Refresh failed: {str(e)}")
         time.sleep(300)  # 5 minutes
 
-# Initialize session state
-if "signals" not in st.session_state:
-    st.session_state.signals = get_signals()
-
-# Start background thread
 if "thread" not in st.session_state:
     thread = Thread(target=auto_refresh)
     thread.daemon = True
@@ -94,7 +104,7 @@ if "thread" not in st.session_state:
 
 # UI Components
 st.title("📈 Intraday King Pro")
-st.markdown("Real-time trading signals for Indian stocks")
+st.markdown("**Fixed Version** | Real-time signals during market hours (9:15 AM - 3:30 PM IST)")
 
 # Disclaimer
 st.warning("""
@@ -102,32 +112,30 @@ st.warning("""
 Data may be delayed by 15-20 minutes.
 """)
 
-# Display signals with color coding
-def color_signal(val):
-    if val == "BUY":
-        return "background-color: green; color: white"
-    elif val == "SELL":
-        return "background-color: red; color: white"
-    return ""
+# Display with error handling
+try:
+    if not st.session_state.signals.empty:
+        st.dataframe(
+            st.session_state.signals.style.format({
+                "Price": "₹{:.2f}",
+                "Change (%)": "{:.2f}%"
+            }).applymap(
+                lambda x: "color: green" if x == "BUY" else "color: red" if x == "SELL" else "",
+                subset=["Signal"]
+            ),
+            use_container_width=True,
+            hide_index=True
+        )
+    else:
+        st.info("No data available - market may be closed")
+except Exception as e:
+    st.error(f"Display error: {str(e)}")
 
-if not st.session_state.signals.empty:
-    styled_df = st.session_state.signals.style.format({
-        "Price": "{:.2f}",
-        "Change (%)": "{:.2f}%"
-    }).applymap(color_signal, subset=["Signal"])
-    
-    st.dataframe(
-        styled_df,
-        use_container_width=True,
-        hide_index=True
-    )
-else:
-    st.info("Loading stock data... Please wait.")
-
-# Last update time
-st.caption(f"Last update: {datetime.datetime.now(IST).strftime('%H:%M:%S')}")
-
-# Manual refresh button
-if st.button("🔄 Refresh Now"):
-    st.session_state.signals = get_signals()
-    st.rerun()
+# Controls
+col1, col2 = st.columns(2)
+with col1:
+    st.caption(f"Last update: {datetime.datetime.now(IST).strftime('%H:%M:%S')}")
+with col2:
+    if st.button("🔄 Manual Refresh"):
+        st.session_state.signals = get_signals()
+        st.rerun()
