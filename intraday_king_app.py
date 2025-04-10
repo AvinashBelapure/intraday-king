@@ -36,11 +36,11 @@ st.markdown("""
 10. **HCLTECH** - Entry: ₹1,405, Target: ₹1,425, SL: ₹1,395  
     💡 *MACD crossover, RSI climbing*
 """)
-
 st.markdown("---")
-st.info("📈 Strategy: Intraday Momentum + Technical Indicators")
-st.caption("✅ Open this page daily at 9:15 AM IST for fresh trades. No login needed.")
->  **This tool is for educational and informational purposes only. It does not constitute financial advice or a recommendation to buy/sell securities.  
+st.markdown("""
+### ⚠️ Disclaimer
+
+> 📢 **This tool is for educational and informational purposes only. It does not constitute financial advice or a recommendation to buy/sell securities.  
 > Always do your own research or consult a SEBI-registered financial advisor before trading.  
 > The creator is not responsible for any trading losses.**
 """)
