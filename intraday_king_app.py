@@ -1,51 +1,89 @@
-
 import streamlit as st
+import pandas as pd
+import yfinance as yf
+import datetime
+import pytz
+from threading import Thread
 
-st.set_page_config(page_title="🚀 Intraday King", layout="centered")
+# App setup
+st.set_page_config(page_title="Intraday King", layout="wide")
 
-st.title("🚀 Intraday King")
-st.markdown("### 📅 April 10 – Top 10 Intraday Picks (India)")
-st.markdown("""
-1. **TATAMOTORS** - Entry: ₹945, Target: ₹960, SL: ₹935  
-   💡 *Volume Surge, MACD crossover*
-   
-2. **INFY** - Entry: ₹1,350, Target: ₹1,370, SL: ₹1,335  
-   💡 *RSI near 50, Bullish divergence*
-   
-3. **RELIANCE** - Entry: ₹2,860, Target: ₹2,900, SL: ₹2,840  
-   💡 *News-based spike + volume*
-   
-4. **ICICIBANK** - Entry: ₹1,090, Target: ₹1,115, SL: ₹1,080  
-   💡 *Momentum breakout, RSI above 60*
+# Time settings
+IST = pytz.timezone('Asia/Kolkata')
+MARKET_OPEN = datetime.time(9, 15)
+MARKET_CLOSE = datetime.time(15, 30)
 
-5. **SBIN** - Entry: ₹760, Target: ₹780, SL: ₹750  
-   💡 *High volume + MACD bullish crossover*
+# Sample Nifty 50 stocks (expand if needed)
+STOCKS = {
+    'RELIANCE.NS': 'Reliance',
+    'TATAMOTORS.NS': 'Tata Motors',
+    'HDFCBANK.NS': 'HDFC Bank',
+    'INFY.NS': 'Infosys',
+    'ICICIBANK.NS': 'ICICI Bank'
+}
 
-6. **HDFCBANK** - Entry: ₹1,530, Target: ₹1,550, SL: ₹1,520  
-   💡 *Support bounce, volume buildup*
+# Generate fake signals (replace with real logic later)
+def get_signals():
+    signals = []
+    for symbol, name in STOCKS.items():
+        try:
+            data = yf.download(symbol, period="1d", interval="5m", progress=False)
+            if len(data) > 1:
+                last_close = data['Close'][-1]
+                prev_close = data['Close'][-2]
+                change = ((last_close - prev_close) / prev_close) * 100
+                
+                # Simple signal logic (BUY if up, SELL if down)
+                signal = "BUY" if change > 0.5 else "SELL" if change < -0.5 else "HOLD"
+                
+                signals.append({
+                    "Stock": name,
+                    "Symbol": symbol,
+                    "Price": last_close,
+                    "Change (%)": f"{change:.2f}%",
+                    "Signal": signal,
+                    "Time": datetime.datetime.now(IST).strftime("%H:%M:%S")
+                })
+        except:
+            pass
+    return pd.DataFrame(signals)
 
-7. **MARUTI** - Entry: ₹10,150, Target: ₹10,350, SL: ₹10,000  
-   💡 *RSI rising, MACD green*
+# Auto-refresh every 5 minutes
+def auto_refresh():
+    while True:
+        now = datetime.datetime.now(IST).time()
+        if MARKET_OPEN <= now <= MARKET_CLOSE:
+            st.session_state.df = get_signals()
+        time.sleep(300)  # 5 minutes
 
-8. **AXISBANK** - Entry: ₹1,060, Target: ₹1,085, SL: ₹1,050  
-   💡 *RSI near 60, Momentum surge*
+# Initialize
+if 'df' not in st.session_state:
+    st.session_state.df = get_signals()
 
-9. **ITC** - Entry: ₹440, Target: ₹452, SL: ₹435  
-   💡 *News + volume spike*
+# Start auto-refresh thread
+if 'thread' not in st.session_state:
+    thread = Thread(target=auto_refresh)
+    thread.daemon = True
+    thread.start()
+    st.session_state.thread = thread
 
-10. **HCLTECH** - Entry: ₹1,405, Target: ₹1,425, SL: ₹1,395  
-    💡 *MACD crossover, RSI climbing*
-""")
+# --- UI ---
+st.title("📈 Intraday King - FREE Live Signals")
+st.markdown("**Real-time Nifty 50 stock signals** (Updates every 5 mins)")
 
-st.markdown("---")
-st.info("📈 Strategy: Intraday Momentum + Technical Indicators")
-st.caption("✅ Open this page daily at 9:15 AM IST for fresh trades. No login needed.")
-st.markdown("---")
-st.markdown("""
-### ⚠️ Disclaimer
+# Disclaimer
+st.warning("⚠️ Educational use only. Not financial advice.")
 
-> 📢 **This tool is for educational and informational purposes only. It does not constitute financial advice or a recommendation to buy/sell securities.  
-> Always do your own research or consult a SEBI-registered financial advisor before trading.  
-> The creator is not responsible for any trading losses.**
-""")
+# Display signals
+st.dataframe(st.session_state.df.style.applymap(
+    lambda x: "color: green" if x == "BUY" else "color: red" if x == "SELL" else "color: gray",
+    subset=["Signal"]
+))
 
+# Last update time
+st.caption(f"Last update: {datetime.datetime.now(IST).strftime('%H:%M:%S')}")
+
+# Manual refresh button
+if st.button("🔄 Refresh Now"):
+    st.session_state.df = get_signals()
+    st.rerun()
